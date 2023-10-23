@@ -1,13 +1,18 @@
 package main
 
 import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/emersion/go-ical"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func DownloadFile(filepath string, url string) error {
@@ -28,13 +33,13 @@ func DownloadFile(filepath string, url string) error {
 	return err
 }
 
-func ExampleDecoder(fileName string) {
+func ExampleDecoder(fileName string) error {
 	// Let's assume r is an io.Reader containing iCal data
 	//var r io.Reader
 
 	r, err := os.Open(fileName)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer r.Close()
 
@@ -46,7 +51,7 @@ func ExampleDecoder(fileName string) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		for _, event := range cal.Events() {
@@ -57,19 +62,20 @@ func ExampleDecoder(fileName string) {
 			st, err := event.DateTimeStart(loc)
 			ed, err := event.DateTimeEnd(loc)
 			if err != nil {
-				log.Fatal(err)
+				return err
 			}
 			log.Printf("Found event: %v", summary)
 			log.Printf("Time start event: %v", st)
 			log.Printf("Time end event: %v", ed)
 		}
 	}
+	return nil
 }
 
-func getEventsNames(fileName string) []ical.Event {
+func getEventsNames(fileName string) ([]ical.Event, error) {
 	r, err := os.Open(fileName)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	defer r.Close()
 
@@ -81,13 +87,13 @@ func getEventsNames(fileName string) []ical.Event {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 
 		for _, event := range cal.Events() {
 			//summary, err := event.Props.Text(ical.PropSummary)
 			if err != nil {
-				log.Fatal(err)
+				return nil, err
 			}
 			//st, err := event.DateTimeStart(loc)
 			//ed, err := event.DateTimeEnd(loc)
@@ -97,7 +103,7 @@ func getEventsNames(fileName string) []ical.Event {
 			//log.Printf("Time end event: %v", ed)
 		}
 	}
-	return eve
+	return eve, nil
 }
 
 func FindUserById(uid int64, utables []CalData) (CalData, int) {
@@ -110,4 +116,82 @@ func FindUserById(uid int64, utables []CalData) (CalData, int) {
 		}
 	}
 	return CalData{}, 0
+}
+
+func LoadData() error {
+	//tempData := []CalData{}
+
+	db, err := sql.Open("sqlite3", "userdata.sql")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	rows, err := db.Query("select * from users")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	users = []CalData{}
+
+	for rows.Next() {
+		u := CalData{}
+		id := 0
+		ev := ""
+		err := rows.Scan(&id, &u.userID, &u.userTime, &u.userCalendar, &u.userURL, &u.userState, &ev)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		_ = json.Unmarshal([]byte(ev), &u.userShowedEvents)
+		users = append(users, u)
+	}
+
+	//return tempData
+	return nil
+}
+
+func NewElement(data CalData) error {
+	db, err := sql.Open("sqlite3", "userdata.sql")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	use_string, _ := json.Marshal(data.userShowedEvents)
+
+	_, err = db.Exec("insert into users (userID, userTime, userCalendar, userURL, userState, userShowedEvents) values (" + strconv.FormatInt(data.userID, 10) + ", " + strconv.FormatInt(int64(data.userTime), 10) + ", '" + data.userCalendar + "', '" + data.userURL + "', '" + data.userState + "','" + string(use_string) + "')")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UpdateElement(data *CalData) error {
+	db, err := sql.Open("sqlite3", "userdata.sql")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	use_string, _ := json.Marshal(data.userShowedEvents)
+	_, err = db.Exec("update users set userCalendar = '" + data.userCalendar + "', userTime = " + strconv.FormatInt(int64(data.userTime), 10) + ", userURL = '" + data.userURL + "', userState='" + data.userState + "', userShowedEvents = '" + string(use_string) + "'  where userID = " + strconv.FormatInt(data.userID, 10) + ";")
+	if err != nil {
+		return nil
+	}
+	return nil
+}
+
+func DeleteElement(data *CalData) error {
+	db, err := sql.Open("sqlite3", "userdata.sql")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	_, err = db.Exec("delete from users where userID = " + strconv.FormatInt(data.userID, 10) + ";")
+	if err != nil {
+		return nil
+	}
+	return nil
 }
