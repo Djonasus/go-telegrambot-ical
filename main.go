@@ -20,7 +20,12 @@ func main() {
 
 	LoadData()
 
-	bot, err := tgbotapi.NewBotAPI("6676298340:AAHkSzB-EpE_Povq86_N38EKu4lUAcRj7pM")
+	if len(os.Args) == 1 || os.Args[1] == "" {
+		panic("Ошибка! Укажите токен бота ./bot <ВАШ_ТОКЕН>")
+	}
+
+	bot, err := tgbotapi.NewBotAPI(os.Args[1])
+	//bot, err := tgbotapi.NewBotAPI("6676298340:AAHkSzB-EpE_Povq86_N38EKu4lUAcRj7pM")
 	if err != nil {
 		panic(err)
 	}
