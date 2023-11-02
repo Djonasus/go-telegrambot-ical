@@ -121,19 +121,23 @@ func syncCals() {
 	for {
 		if len(users) != 0 {
 			for _, cd := range users {
-				if cd.userID == 0 || cd.userURL == "" || cd.userState == "create" || cd.userState == "update" {
-					fmt.Println("EMPTY!")
-					continue
-				}
-				err := DownloadFile(cd.userCalendar, cd.userURL)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
+				go syncCal(&cd)
 			}
 			fmt.Println("All cals synced")
 		}
 		time.Sleep(10 * time.Minute)
+	}
+}
+
+func syncCal(cd *CalData) {
+	if cd.userID == 0 || cd.userURL == "" || cd.userState == "create" || cd.userState == "update" {
+		//fmt.Println("EMPTY!")
+		return
+	}
+	err := DownloadFile(cd.userCalendar, cd.userURL)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 }
 

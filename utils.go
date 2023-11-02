@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/emersion/go-ical"
 	_ "github.com/mattn/go-sqlite3"
@@ -31,45 +29,6 @@ func DownloadFile(filepath string, url string) error {
 
 	_, err = io.Copy(out, resp.Body)
 	return err
-}
-
-func ExampleDecoder(fileName string) error {
-	// Let's assume r is an io.Reader containing iCal data
-	//var r io.Reader
-
-	r, err := os.Open(fileName)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	loc, _ := time.LoadLocation("")
-
-	dec := ical.NewDecoder(r)
-	for {
-		cal, err := dec.Decode()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-
-		for _, event := range cal.Events() {
-			summary, err := event.Props.Text(ical.PropSummary)
-			if err != nil {
-				log.Fatal(err)
-			}
-			st, err := event.DateTimeStart(loc)
-			ed, err := event.DateTimeEnd(loc)
-			if err != nil {
-				return err
-			}
-			log.Printf("Found event: %v", summary)
-			log.Printf("Time start event: %v", st)
-			log.Printf("Time end event: %v", ed)
-		}
-	}
-	return nil
 }
 
 func getEventsNames(fileName string) ([]ical.Event, error) {
