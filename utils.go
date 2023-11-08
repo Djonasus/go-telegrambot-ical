@@ -4,15 +4,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
+	"net/url"
 	"strconv"
 
-	"github.com/emersion/go-ical"
+	"github.com/goodsign/monday"
+	"github.com/itzg/restify"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/net/html"
 )
 
+//Archaism
+/*
 func DownloadFile(filepath string, url string) error {
 	resp, err := http.Get(url)
 
@@ -30,8 +32,9 @@ func DownloadFile(filepath string, url string) error {
 	_, err = io.Copy(out, resp.Body)
 	return err
 }
+*/
 
-func getEventsNames(fileName string) ([]ical.Event, error) {
+/*func getEventsNames(fileName string) ([]ical.Event, error) {
 	r, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
@@ -63,6 +66,45 @@ func getEventsNames(fileName string) ([]ical.Event, error) {
 		}
 	}
 	return eve, nil
+}
+*/
+
+func GetEvents(cd CalData) ([]EventData, error) {
+
+	tempEvents := []EventData{}
+
+	uri, _ := url.Parse(cd.userURL)
+	q := uri.Query()
+	q.Set("limit", MAX_EVENTS)
+	uri.RawQuery = q.Encode()
+	ht, _ := restify.LoadContent(uri, "")
+	dat, _ := restify.ConvertHtmlToJson([]*html.Node{ht.LastChild.LastChild.LastChild})
+
+	var arr []JsonElement
+
+	err := json.Unmarshal(dat, &arr)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range arr[0].Elements {
+		newEvent := EventData{}
+		newEvent.Name = v.Elements[0].Text
+
+		newstr, err := strconv.Unquote(`"` + v.Elements[1].Elements[0].Text + `"`)
+		if err != nil {
+			return nil, err
+		}
+		tmg, err := monday.Parse("2 January 2006 15:04", newstr, monday.LocaleRuRU)
+		if err != nil {
+			return nil, err
+		}
+
+		newEvent.Date = tmg
+
+		tempEvents = append(tempEvents, newEvent)
+	}
+
+	return tempEvents, nil
 }
 
 func FindUserById(uid int64, utables []CalData) (CalData, int) {
@@ -96,14 +138,14 @@ func LoadData() error {
 
 	for rows.Next() {
 		u := CalData{}
-		id := 0
+
 		ev := ""
-		err := rows.Scan(&id, &u.userID, &u.userTime, &u.userCalendar, &u.userURL, &u.userState, &ev)
+		err := rows.Scan(&u.userID, &u.userTime, &u.userURL, &u.userState, &ev)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
-		_ = json.Unmarshal([]byte(ev), &u.userShowedEvents)
+		_ = json.Unmarshal([]byte(ev), &u.userEvents)
 		users = append(users, u)
 	}
 
@@ -118,9 +160,9 @@ func NewElement(data CalData) error {
 	}
 	defer db.Close()
 
-	use_string, _ := json.Marshal(data.userShowedEvents)
+	use_string, _ := json.Marshal(data.userEvents)
 
-	_, err = db.Exec("insert into users (userID, userTime, userCalendar, userURL, userState, userShowedEvents) values (" + strconv.FormatInt(data.userID, 10) + ", " + strconv.FormatInt(int64(data.userTime), 10) + ", '" + data.userCalendar + "', '" + data.userURL + "', '" + data.userState + "','" + string(use_string) + "')")
+	_, err = db.Exec("insert into users (userID, userTime, userURL, userState, userEvents) values (" + strconv.FormatInt(data.userID, 10) + ", " + strconv.FormatInt(int64(data.userTime), 10) + ", '" + data.userURL + "', '" + data.userState + "','" + string(use_string) + "')")
 	if err != nil {
 		return err
 	}
@@ -133,8 +175,11 @@ func UpdateElement(data *CalData) error {
 		return err
 	}
 	defer db.Close()
-	use_string, _ := json.Marshal(data.userShowedEvents)
-	_, err = db.Exec("update users set userCalendar = '" + data.userCalendar + "', userTime = " + strconv.FormatInt(int64(data.userTime), 10) + ", userURL = '" + data.userURL + "', userState='" + data.userState + "', userShowedEvents = '" + string(use_string) + "'  where userID = " + strconv.FormatInt(data.userID, 10) + ";")
+	use_string, err := json.Marshal(data.userEvents)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	_, err = db.Exec("update users set userTime = " + strconv.FormatInt(int64(data.userTime), 10) + ", userURL = '" + data.userURL + "', userState='" + data.userState + "', userEvents = '" + string(use_string) + "'  where userID = " + strconv.FormatInt(data.userID, 10) + ";")
 	if err != nil {
 		return nil
 	}
@@ -153,4 +198,8 @@ func DeleteElement(data *CalData) error {
 		return nil
 	}
 	return nil
+}
+
+func removeEvent(slice []EventData, s int) []EventData {
+	return append(slice[:s], slice[s+1:]...)
 }

@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/emersion/go-ical"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"golang.org/x/exp/slices"
 )
@@ -51,10 +50,12 @@ func main() {
 			if update.MyChatMember.NewChatMember.Status == "left" || update.MyChatMember.NewChatMember.Status == "kicked" {
 				cd, i := FindUserById(update.MyChatMember.Chat.ID, users)
 				if cd.userID != 0 {
-					e := os.Remove(cd.userCalendar)
-					if e != nil {
-						log.Fatal(e)
-					}
+					/*
+						e := os.Remove(cd.userCalendar)
+						if e != nil {
+							log.Fatal(e)
+						}
+					*/
 					fmt.Println("User " + strconv.FormatInt(update.MyChatMember.Chat.ID, 10) + " gone(")
 					DeleteElement(&cd)
 					users[i] = CalData{}
@@ -94,14 +95,22 @@ func main() {
 
 			switch cd.userState {
 			case "create", "update":
-				err := DownloadFile("calendars/"+strconv.FormatInt(update.FromChat().ID, 10)+".ical", update.Message.Text)
+				/*
+					err := DownloadFile("calendars/"+strconv.FormatInt(update.FromChat().ID, 10)+".ical", update.Message.Text)
+					if err != nil {
+						bot.Send(tgbotapi.NewMessage(update.FromChat().ID, err.Error()))
+						continue
+					}
+				*/
+				users[i].userURL = update.Message.Text
+				events, err := GetEvents(users[i])
 				if err != nil {
 					bot.Send(tgbotapi.NewMessage(update.FromChat().ID, err.Error()))
 					continue
 				}
+				users[i].userEvents = events
 				users[i].userState = "listen"
-				users[i].userCalendar = "calendars/" + strconv.FormatInt(update.FromChat().ID, 10) + ".ical"
-				users[i].userURL = update.Message.Text
+				//users[i].userCalendar = "calendars/" + strconv.FormatInt(update.FromChat().ID, 10) + ".ical"
 
 				err = UpdateElement(&users[i])
 				if err != nil {
@@ -120,8 +129,8 @@ func main() {
 func syncCals() {
 	for {
 		if len(users) != 0 {
-			for _, cd := range users {
-				go syncCal(&cd)
+			for i, _ := range users {
+				go syncCal(&users[i])
 			}
 			fmt.Println("All cals synced")
 		}
@@ -134,36 +143,76 @@ func syncCal(cd *CalData) {
 		//fmt.Println("EMPTY!")
 		return
 	}
-	err := DownloadFile(cd.userCalendar, cd.userURL)
+
+	newEvents, err := GetEvents(*cd)
 	if err != nil {
+		fmt.Println(err.Error())
+	}
+
+	for _, v := range newEvents {
+		if !slices.Contains(cd.userEvents, v) {
+			cd.userEvents = append(cd.userEvents, v)
+		}
+	}
+	for i, v := range cd.userEvents {
+		if v.Showed == true {
+			cd.userEvents = removeEvent(cd.userEvents, i)
+		}
+	}
+	UpdateElement(cd)
+	//err := DownloadFile(cd.userCalendar, cd.userURL)
+	/*if err != nil {
 		fmt.Println(err)
 		return
-	}
+	}*/
+
 }
 
 func callMe(bot *tgbotapi.BotAPI) {
-	loc, _ := time.LoadLocation("")
+	//loc, _ := time.LoadLocation("")
 	//call logic
 	for {
 		if len(users) != 0 {
 			for i, cd := range users {
-				if cd.userCalendar == "" {
-					continue
-				}
-				eve, err := getEventsNames(cd.userCalendar)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				for _, ev := range eve {
-					nme, _ := ev.Props.Text(ical.PropSummary)
-					startTm, _ := ev.DateTimeStart(loc)
-					dif := startTm.Sub(time.Now()).Minutes()
+				/*
+					if cd.userCalendar == "" {
+						continue
+					}
+					eve, err := getEventsNames(cd.userCalendar)
+					if err != nil {
+						fmt.Println(err)
+						continue
+					}
+					for _, ev := range eve {
+						nme, _ := ev.Props.Text(ical.PropSummary)
+						startTm, _ := ev.DateTimeStart(loc)
+						dif := startTm.Sub(time.Now()).Minutes()
 
-					if dif <= float64(cd.userTime) && dif > 0 && !slices.Contains(cd.userShowedEvents, nme) {
-						bot.Send(tgbotapi.NewMessage(cd.userID, "Событие "+nme+" скоро начнется! Осталось "+fmt.Sprintf("%.0f", dif)+" минут!"))
-						users[i].userShowedEvents = append(users[i].userShowedEvents, nme)
-						UpdateElement(&users[i])
+						if dif <= float64(cd.userTime) && dif > 0 && !slices.Contains(cd.userShowedEvents, nme) {
+							bot.Send(tgbotapi.NewMessage(cd.userID, "Событие "+nme+" скоро начнется! Осталось "+fmt.Sprintf("%.0f", dif)+" минут!"))
+							users[i].userShowedEvents = append(users[i].userShowedEvents, nme)
+							UpdateElement(&users[i])
+						}
+					}
+				*/
+
+				if cd.userEvents == nil {
+					/*
+						events, err := GetEvents(cd)
+						if err != nil {
+							fmt.Println(err.Error())
+							continue
+						}
+						users[i].userEvents = events
+					*/
+					continue
+				}
+				for ei, _ := range cd.userEvents {
+					dif := cd.userEvents[ei].Date.Sub(time.Now()).Minutes()
+					if cd.userEvents[ei].Showed == false && dif <= float64(cd.userTime) {
+						bot.Send(tgbotapi.NewMessage(cd.userID, "Событие "+cd.userEvents[ei].Name+" скоро начнется! Осталось "+fmt.Sprintf("%.0f", dif)+" мин."))
+						users[i].userEvents[ei].Showed = true
+						UpdateElement(&cd)
 					}
 				}
 			}
