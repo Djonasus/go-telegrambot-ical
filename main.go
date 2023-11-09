@@ -139,6 +139,7 @@ func syncCals() {
 }
 
 func syncCal(cd *CalData) {
+	loc, _ := time.LoadLocation("Local")
 	if cd.userID == 0 || cd.userURL == "" || cd.userState == "create" || cd.userState == "update" {
 		//fmt.Println("EMPTY!")
 		return
@@ -154,8 +155,12 @@ func syncCal(cd *CalData) {
 			cd.userEvents = append(cd.userEvents, v)
 		}
 	}
-	for i, v := range cd.userEvents {
-		if v.Showed == true {
+	for i := len(cd.userEvents) - 1; i >= 0; i-- {
+		dif := cd.userEvents[i].Date.Sub(time.Now().In(loc)).Minutes()
+		/*
+			if cd.userEvents[i].Showed == true {
+				cd.userEvents = removeEvent(cd.userEvents, i)
+			} else*/if dif <= 0 {
 			cd.userEvents = removeEvent(cd.userEvents, i)
 		}
 	}
@@ -169,11 +174,13 @@ func syncCal(cd *CalData) {
 }
 
 func callMe(bot *tgbotapi.BotAPI) {
+	loc, _ := time.LoadLocation("Local")
 	//loc, _ := time.LoadLocation("")
 	//call logic
 	for {
 		if len(users) != 0 {
 			for i, cd := range users {
+				fmt.Println("Call user: " + strconv.FormatInt(cd.userID, 10))
 				/*
 					if cd.userCalendar == "" {
 						continue
@@ -197,6 +204,7 @@ func callMe(bot *tgbotapi.BotAPI) {
 				*/
 
 				if cd.userEvents == nil {
+					//fmt.Println("Yes")
 					/*
 						events, err := GetEvents(cd)
 						if err != nil {
@@ -208,8 +216,12 @@ func callMe(bot *tgbotapi.BotAPI) {
 					continue
 				}
 				for ei, _ := range cd.userEvents {
-					dif := cd.userEvents[ei].Date.Sub(time.Now()).Minutes()
+
+					dif := cd.userEvents[ei].Date.Sub(time.Now().In(loc)).Minutes()
+					fmt.Println(time.Now(), cd.userEvents[ei])
+					fmt.Println(dif)
 					if cd.userEvents[ei].Showed == false && dif <= float64(cd.userTime) {
+						fmt.Println("Send Call: " + cd.userEvents[ei].Name)
 						bot.Send(tgbotapi.NewMessage(cd.userID, "Событие "+cd.userEvents[ei].Name+" скоро начнется! Осталось "+fmt.Sprintf("%.0f", dif)+" мин."))
 						users[i].userEvents[ei].Showed = true
 						UpdateElement(&cd)

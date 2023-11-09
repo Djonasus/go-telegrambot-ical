@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/goodsign/monday"
 	"github.com/itzg/restify"
@@ -94,7 +95,8 @@ func GetEvents(cd CalData) ([]EventData, error) {
 		if err != nil {
 			return nil, err
 		}
-		tmg, err := monday.Parse("2 January 2006 15:04", newstr, monday.LocaleRuRU)
+		loc, _ := time.LoadLocation("Local")
+		tmg, err := monday.ParseInLocation("2 January 2006 15:04", newstr, loc, monday.LocaleRuRU)
 		if err != nil {
 			return nil, err
 		}

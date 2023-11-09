@@ -108,13 +108,14 @@ func syncHandler(uid int64, bot *tgbotapi.BotAPI) {
 }
 
 func setTimeHandler(uid int64, bot *tgbotapi.BotAPI, args string) {
-	if args == "" {
-		bot.Send(tgbotapi.NewMessage(uid, "Укажите время, за которое бот должен предупредить вас. /settime <минуты>"))
-		return
-	}
 	cd, i := FindUserById(uid, users)
 	if cd.userID == 0 {
 		bot.Send(tgbotapi.NewMessage(uid, "Профиль не обнаружен."))
+		return
+	}
+	if args == "" {
+		bot.Send(tgbotapi.NewMessage(uid, "Текущая настройка: "+strconv.Itoa(cd.userTime)+" мин."))
+		bot.Send(tgbotapi.NewMessage(uid, "Если хотите изменить время, то укажите его через: /settime <минуты>"))
 		return
 	}
 	users[i].userTime, _ = strconv.Atoi(args)
