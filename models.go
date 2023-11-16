@@ -3,13 +3,11 @@ package main
 import "time"
 
 type CalData struct {
-	userID   int64
-	userTime int
-	//userCalendar string
+	userID     int64
+	userTime   int
 	userURL    string
 	userState  string
 	userEvents []EventData
-	//userShowedEvents []string
 }
 
 type JsonElement struct {

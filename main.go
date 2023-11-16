@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	users []CalData
+	users map[int64]*CalData
 )
 
 func main() {
@@ -41,24 +41,13 @@ func main() {
 	go syncCals()
 
 	for update := range updates {
-
 		if update.Message == nil {
 			fmt.Println("Empty Update") // ignore any non-Message updates
-			//continue
-			//if update.ChatMember.NewChatMember.HasLeft() {
-			//if update.MyChatMember.NewChatMember.HasLeft() {
 			if update.MyChatMember.NewChatMember.Status == "left" || update.MyChatMember.NewChatMember.Status == "kicked" {
-				cd, i := FindUserById(update.MyChatMember.Chat.ID, users)
-				if cd.userID != 0 {
-					/*
-						e := os.Remove(cd.userCalendar)
-						if e != nil {
-							log.Fatal(e)
-						}
-					*/
+				if cd, ok := users[update.MyChatMember.Chat.ID]; ok {
 					fmt.Println("User " + strconv.FormatInt(update.MyChatMember.Chat.ID, 10) + " gone(")
-					DeleteElement(&cd)
-					users[i] = CalData{}
+					DeleteElement(cd)
+					delete(users, update.MyChatMember.Chat.ID)
 				}
 			}
 			continue
@@ -86,39 +75,29 @@ func main() {
 			}
 		} else {
 			//FOR URL OR SOMETHING ELSE
-			cd, i := FindUserById(update.FromChat().ID, users)
 
-			if cd.userID == 0 {
-				bot.Send(tgbotapi.NewMessage(update.FromChat().ID, "У вас не создан профиль. Введите /start!"))
-				continue
-			}
-
-			switch cd.userState {
-			case "create", "update":
-				/*
-					err := DownloadFile("calendars/"+strconv.FormatInt(update.FromChat().ID, 10)+".ical", update.Message.Text)
+			if cd, ok := users[update.FromChat().ID]; ok {
+				switch cd.userState {
+				case "create", "update":
+					cd.userURL = update.Message.Text
+					events, err := GetEvents(*cd)
 					if err != nil {
 						bot.Send(tgbotapi.NewMessage(update.FromChat().ID, err.Error()))
 						continue
 					}
-				*/
-				users[i].userURL = update.Message.Text
-				events, err := GetEvents(users[i])
-				if err != nil {
-					bot.Send(tgbotapi.NewMessage(update.FromChat().ID, err.Error()))
-					continue
-				}
-				users[i].userEvents = events
-				users[i].userState = "listen"
-				//users[i].userCalendar = "calendars/" + strconv.FormatInt(update.FromChat().ID, 10) + ".ical"
+					cd.userEvents = events
+					cd.userState = "listen"
 
-				err = UpdateElement(&users[i])
-				if err != nil {
-					bot.Send(tgbotapi.NewMessage(update.FromChat().ID, err.Error()))
-				}
+					err = UpdateElement(cd)
+					if err != nil {
+						bot.Send(tgbotapi.NewMessage(update.FromChat().ID, err.Error()))
+					}
 
-				bot.Send(tgbotapi.NewMessage(update.FromChat().ID, "Скачивание календаря завершено!"))
-				//bot.Send(tgbotapi.NewMessage(update.FromChat().ID, err.Error()))
+					bot.Send(tgbotapi.NewMessage(update.FromChat().ID, "Скачивание календаря завершено!"))
+				}
+			} else {
+				bot.Send(tgbotapi.NewMessage(update.FromChat().ID, "У вас не создан профиль. Введите /start!"))
+				continue
 			}
 		}
 	}
@@ -129,8 +108,8 @@ func main() {
 func syncCals() {
 	for {
 		if len(users) != 0 {
-			for i, _ := range users {
-				go syncCal(&users[i])
+			for _, v := range users {
+				go syncCal(v)
 			}
 			fmt.Println("All cals synced")
 		}
@@ -141,7 +120,6 @@ func syncCals() {
 func syncCal(cd *CalData) {
 	loc, _ := time.LoadLocation("Local")
 	if cd.userID == 0 || cd.userURL == "" || cd.userState == "create" || cd.userState == "update" {
-		//fmt.Println("EMPTY!")
 		return
 	}
 
@@ -157,62 +135,22 @@ func syncCal(cd *CalData) {
 	}
 	for i := len(cd.userEvents) - 1; i >= 0; i-- {
 		dif := cd.userEvents[i].Date.Sub(time.Now().In(loc)).Minutes()
-		/*
-			if cd.userEvents[i].Showed == true {
-				cd.userEvents = removeEvent(cd.userEvents, i)
-			} else*/if dif <= 0 {
+		if dif <= 0 {
 			cd.userEvents = removeEvent(cd.userEvents, i)
 		}
 	}
 	UpdateElement(cd)
-	//err := DownloadFile(cd.userCalendar, cd.userURL)
-	/*if err != nil {
-		fmt.Println(err)
-		return
-	}*/
-
 }
 
 func callMe(bot *tgbotapi.BotAPI) {
 	loc, _ := time.LoadLocation("Local")
-	//loc, _ := time.LoadLocation("")
 	//call logic
 	for {
 		if len(users) != 0 {
-			for i, cd := range users {
+			for _, cd := range users {
 				fmt.Println("Call user: " + strconv.FormatInt(cd.userID, 10))
-				/*
-					if cd.userCalendar == "" {
-						continue
-					}
-					eve, err := getEventsNames(cd.userCalendar)
-					if err != nil {
-						fmt.Println(err)
-						continue
-					}
-					for _, ev := range eve {
-						nme, _ := ev.Props.Text(ical.PropSummary)
-						startTm, _ := ev.DateTimeStart(loc)
-						dif := startTm.Sub(time.Now()).Minutes()
-
-						if dif <= float64(cd.userTime) && dif > 0 && !slices.Contains(cd.userShowedEvents, nme) {
-							bot.Send(tgbotapi.NewMessage(cd.userID, "Событие "+nme+" скоро начнется! Осталось "+fmt.Sprintf("%.0f", dif)+" минут!"))
-							users[i].userShowedEvents = append(users[i].userShowedEvents, nme)
-							UpdateElement(&users[i])
-						}
-					}
-				*/
 
 				if cd.userEvents == nil {
-					//fmt.Println("Yes")
-					/*
-						events, err := GetEvents(cd)
-						if err != nil {
-							fmt.Println(err.Error())
-							continue
-						}
-						users[i].userEvents = events
-					*/
 					continue
 				}
 				for ei, _ := range cd.userEvents {
@@ -223,8 +161,8 @@ func callMe(bot *tgbotapi.BotAPI) {
 					if cd.userEvents[ei].Showed == false && dif <= float64(cd.userTime) {
 						fmt.Println("Send Call: " + cd.userEvents[ei].Name)
 						bot.Send(tgbotapi.NewMessage(cd.userID, "Событие "+cd.userEvents[ei].Name+" скоро начнется! Осталось "+fmt.Sprintf("%.0f", dif)+" мин."))
-						users[i].userEvents[ei].Showed = true
-						UpdateElement(&cd)
+						cd.userEvents[ei].Showed = true
+						UpdateElement(cd)
 					}
 				}
 			}
@@ -232,24 +170,3 @@ func callMe(bot *tgbotapi.BotAPI) {
 		time.Sleep(time.Minute)
 	}
 }
-
-/*func main() {
-
-	ok := CalData{userID: 160, userCalendar: "aboba", userURL: "beep", userState: "start", userShowedEvents: []string{"ok", "neok"}}
-
-	//NewElement(ok)
-
-	//LoadData()
-	//for _, v := range users {
-	//fmt.Println(v.userID, v.userCalendar, v.userURL)
-	//}
-
-	ok.userURL = "Not Aboba!"
-	UpdateElement(&ok)
-
-	LoadData()
-	for _, v := range users {
-		fmt.Println(v.userID, v.userCalendar, v.userURL, v.userShowedEvents)
-	}
-}
-*/
